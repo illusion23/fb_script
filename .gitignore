@@ -1,0 +1,9 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+fb_profile/
+logs/
+.env
+config.json
+post.txt
