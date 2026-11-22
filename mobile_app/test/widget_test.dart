@@ -141,6 +141,8 @@ void main() {
     test('runs standalone Desktop Browser (CDP) workflow without Python bridge', () async {
       final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
       final navigatedUrls = <String>[];
+      var submitEvalCount = 0;
+      final submitSkipFlags = <bool>[];
 
       server.listen((req) async {
         final ws = await WebSocketTransformer.upgrade(req);
@@ -170,7 +172,15 @@ void main() {
             } else if (expr.contains('COMPOSER_TRIGGER_LABELS')) {
               value = jsonEncode({'status': 'composer_ready', 'usedAnonymous': true});
             } else if (expr.contains('SUBMIT_BUTTON_NAMES')) {
-              value = jsonEncode({'status': 'submitted'});
+              submitEvalCount++;
+              submitSkipFlags.add(expr.contains('if (!true && msg'));
+              if (submitEvalCount == 1) {
+                value = jsonEncode({'status': 'text_inserted', 'textConfirmed': true});
+              } else if (submitEvalCount == 2) {
+                value = jsonEncode({'status': 'waiting_submit'});
+              } else {
+                value = jsonEncode({'status': 'submitted'});
+              }
             } else if (expr.contains('isCommentTextbox')) {
               value = 'true';
             }
@@ -213,6 +223,8 @@ void main() {
         await controller.startScript();
 
         expect(navigatedUrls, ['https://www.facebook.com/groups/999/']);
+        // First tick inserts text (skip=false); subsequent ticks lock out re-insertion (skip=true).
+        expect(submitSkipFlags, [false, true, true]);
         expect(controller.isRunning, isFalse);
         expect(controller.history.length, 1);
         expect(controller.history.first.mode, 'desktopBrowser');

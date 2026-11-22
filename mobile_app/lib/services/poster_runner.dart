@@ -799,8 +799,12 @@ class AppStateController extends ChangeNotifier {
     required bool dryRun,
     bool requireAnonymous = false,
   }) async {
-    final deadline = DateTime.now().add(const Duration(seconds: 12));
+    final deadline = DateTime.now().add(const Duration(seconds: 15));
     Map<String, dynamic> lastRes = const {};
+    var skipTextInsert = message.trim().isEmpty;
+    var insertAttempt = 0;
+    var skipImageAttach = imagesBase64.isEmpty;
+
     while (DateTime.now().isBefore(deadline)) {
       if (_stopRequested) throw Exception('Stopped by user');
       final res = _decodeJsMap(
@@ -810,11 +814,31 @@ class AppStateController extends ChangeNotifier {
             imagesBase64: imagesBase64,
             dryRun: dryRun,
             requireAnonymous: requireAnonymous,
+            skipTextInsert: skipTextInsert,
+            insertAttempt: insertAttempt,
+            skipImageAttach: skipImageAttach,
           ),
         ),
       );
       lastRes = res;
       final status = res['status'] as String? ?? '';
+      if (status == 'text_inserted') {
+        if (res['textConfirmed'] == true) {
+          // Text is confirmed present in the composer; never insert it again.
+          skipTextInsert = true;
+        } else {
+          // Wait one tick for Lexical to render; only fall back to the next
+          // strategy if the textbox is still empty on the next check.
+          insertAttempt = min(insertAttempt + 1, 2);
+        }
+        await Future<void>.delayed(const Duration(milliseconds: 700));
+        continue;
+      }
+      if (status == 'images_attached') {
+        skipImageAttach = true;
+        await Future<void>.delayed(const Duration(milliseconds: 800));
+        continue;
+      }
       if (status == 'dry_run_ok') return 'dry_run_ok';
       if (status == 'anonymous_unavailable') return 'anonymous_unavailable';
       if (status == 'error') {
@@ -837,6 +861,8 @@ class AppStateController extends ChangeNotifier {
           'Composer dialog stayed open after clicking Post; post may need review.',
         );
       }
+      // Once past the text check, lock out any future text re-insertion for this composer.
+      skipTextInsert = true;
       await Future<void>.delayed(const Duration(milliseconds: 600));
     }
     throw Exception(

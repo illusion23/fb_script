@@ -398,6 +398,9 @@ class FbWebViewScripts {
     required List<Map<String, String>> imagesBase64,
     required bool dryRun,
     bool requireAnonymous = false,
+    bool skipTextInsert = false,
+    int insertAttempt = 0,
+    bool skipImageAttach = false,
   }) {
     final msgJson = jsonEncode(message);
     final imgsJson = jsonEncode(imagesBase64);
@@ -454,14 +457,29 @@ class FbWebViewScripts {
         }
 
         const msg = $msgJson;
-        if (msg && msg.trim().length > 0) {
+        if (!$skipTextInsert && msg && msg.trim().length > 0) {
           const tb = container.querySelector("[role='textbox'][contenteditable='true'], textarea");
           if (!tb) {
             return JSON.stringify({ status: 'error', error: 'Composer textbox not found' });
           }
-          const normalizeWs = (s) => (s || '').replace(/\\s+/g, ' ').trim();
+          const normalizeWs = (s) => (s || '')
+            .replace(/[\\u200B-\\u200D\\uFEFF\\u00A0]/g, ' ')
+            .replace(/\\s+/g, ' ')
+            .trim();
+          const normalizedMsg = normalizeWs(msg);
           const existingText = normalizeWs(tb.tagName === 'TEXTAREA' ? tb.value : tb.innerText);
-          if (tb.dataset.fbPosterFilled !== '1' && existingText !== normalizeWs(msg)) {
+          const alreadyPresent =
+            existingText.length > 0 &&
+            (existingText === normalizedMsg || existingText.includes(normalizedMsg));
+
+          if (alreadyPresent) {
+            container.dataset.fbPosterFilled = '1';
+            tb.dataset.fbPosterFilled = '1';
+          } else if (
+            container.dataset.fbPosterFilled !== '1' &&
+            tb.dataset.fbPosterFilled !== '1' &&
+            existingText.length === 0
+          ) {
             tb.focus();
             tb.click();
             if (tb.tagName === 'TEXTAREA') {
@@ -469,6 +487,8 @@ class FbWebViewScripts {
               setter.call(tb, msg);
               tb.dispatchEvent(new Event('input', { bubbles: true }));
               tb.dispatchEvent(new Event('change', { bubbles: true }));
+              container.dataset.fbPosterFilled = '1';
+              tb.dataset.fbPosterFilled = '1';
             } else {
               // Place collapsed Selection inside Lexical editor before inserting text.
               try {
@@ -483,12 +503,16 @@ class FbWebViewScripts {
                 }
               } catch (_) {}
 
-              let inserted = false;
-              try {
-                inserted = document.execCommand('insertText', false, msg);
-              } catch (_) {}
-
-              if (!inserted || (tb.innerText || '').trim().length === 0) {
+              // Use ONLY ONE insertion strategy per poll tick.
+              // Facebook's Lexical editor calls preventDefault() on beforeinput, which causes
+              // execCommand('insertText') to return false even when it succeeded; firing a
+              // second strategy in the same tick duplicates the post text.
+              const attempt = $insertAttempt;
+              if (attempt === 0) {
+                try {
+                  document.execCommand('insertText', false, msg);
+                } catch (_) {}
+              } else if (attempt === 1) {
                 try {
                   const dt = new DataTransfer();
                   dt.setData('text/plain', msg);
@@ -499,9 +523,7 @@ class FbWebViewScripts {
                   });
                   tb.dispatchEvent(pasteEvt);
                 } catch (_) {}
-              }
-
-              if ((tb.innerText || '').trim().length === 0) {
+              } else {
                 try {
                   tb.dispatchEvent(new InputEvent('beforeinput', {
                     bubbles: true,
@@ -510,7 +532,7 @@ class FbWebViewScripts {
                     data: msg
                   }));
                 } catch (_) {}
-                if ((tb.innerText || '').trim().length === 0) {
+                if (normalizeWs(tb.innerText).length === 0) {
                   tb.innerText = msg;
                 }
                 tb.dispatchEvent(new InputEvent('input', {
@@ -519,17 +541,25 @@ class FbWebViewScripts {
                   inputType: 'insertText'
                 }));
               }
+
+              const afterText = normalizeWs(tb.innerText);
+              if (afterText.length > 0) {
+                container.dataset.fbPosterFilled = '1';
+                tb.dataset.fbPosterFilled = '1';
+              }
             }
-            if ((tb.tagName === 'TEXTAREA' ? (tb.value || '') : (tb.innerText || '')).trim().length > 0) {
-              tb.dataset.fbPosterFilled = '1';
-            }
-            // Give React/Lexical a frame to enable the Post button after inserting text.
-            return JSON.stringify({ status: 'waiting_submit' });
+            // Wait one poll cycle for React/Lexical to flush state and enable the Post button.
+            return JSON.stringify({
+              status: 'text_inserted',
+              textConfirmed:
+                container.dataset.fbPosterFilled === '1' ||
+                tb.dataset.fbPosterFilled === '1'
+            });
           }
         }
 
         const imgs = $imgsJson;
-        if (imgs && imgs.length > 0) {
+        if (!$skipImageAttach && imgs && imgs.length > 0) {
           let fileInput = container.querySelector("input[type='file'][accept*='image' i]") ||
                           container.querySelector("input[type='file']") ||
                           document.querySelector("input[type='file'][accept*='image' i]");
@@ -560,6 +590,7 @@ class FbWebViewScripts {
               fileInput.files = dt.files;
               fileInput.dataset.fbPosterAttached = '1';
               fileInput.dispatchEvent(new Event('change', { bubbles: true }));
+              return JSON.stringify({ status: 'images_attached' });
             } catch (err) {
               return JSON.stringify({ status: 'error', error: 'Failed to attach image in WebView: ' + err });
             }

@@ -1,4 +1,4 @@
-﻿<#
+<#
 .SYNOPSIS
   Build FB Group Poster for Windows x64 with guaranteed Windows 7 SP1 x64,
   Windows 10, and Windows 11 compatibility.
