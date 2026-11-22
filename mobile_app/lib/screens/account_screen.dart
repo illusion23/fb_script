@@ -3,6 +3,7 @@ import 'package:http/http.dart' as http;
 
 import '../models/fb_account.dart';
 import '../services/poster_runner.dart';
+import '../utils/compat_theme.dart';
 import '../widgets/live_webview_sheet.dart';
 
 /// Side-menu screen for setting Facebook Email & Password, interactive 2FA
@@ -146,12 +147,13 @@ class _AccountScreenState extends State<AccountScreen> {
         Container(
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
-            color: (hasCreds ? Colors.green : Colors.orange)
-                .withValues(alpha: 0.12),
+            color: colorWithOpacity(hasCreds ? Colors.green : Colors.orange, 0.12),
             borderRadius: BorderRadius.circular(16),
             border: Border.all(
-              color: (hasCreds ? Colors.green : Colors.orange)
-                  .withValues(alpha: 0.35),
+              color: colorWithOpacity(
+                hasCreds ? Colors.green : Colors.orange,
+                0.35,
+              ),
             ),
           ),
           child: Row(
@@ -191,7 +193,7 @@ class _AccountScreenState extends State<AccountScreen> {
         const SizedBox(height: 12),
 
         // Credentials Form Card
-        Card(
+        AppCard(
           child: Padding(
             padding: const EdgeInsets.all(16),
             child: Form(
@@ -297,7 +299,7 @@ class _AccountScreenState extends State<AccountScreen> {
         const SizedBox(height: 12),
 
         // 2FA Interactive Login Card
-        Card(
+        AppCard(
           child: Padding(
             padding: const EdgeInsets.all(16),
             child: Column(
@@ -338,7 +340,7 @@ class _AccountScreenState extends State<AccountScreen> {
         const SizedBox(height: 12),
 
         // Optional Bridge Server Card
-        Card(
+        AppCard(
           child: Padding(
             padding: const EdgeInsets.all(16),
             child: Column(

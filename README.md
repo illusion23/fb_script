@@ -67,8 +67,27 @@ flutter run
 ```
 
 ### Optional: Python Bridge Server Mode
-To execute the desktop Playwright script (`fb_poster.py`) remotely from the mobile app or from Linux desktop:
+To execute the desktop Playwright script (`fb_poster.py`) remotely from the mobile app or from desktop (Windows/Linux):
 ```bash
 .venv/bin/python bridge_server.py --host 0.0.0.0 --port 8765
 ```
 Then set the Bridge Server URL in the app's **FB Account** screen (e.g. `http://<YOUR_PC_IP>:8765`) and select **Python Script Bridge** under Script Options.
+
+### Building for Windows (Windows 7 SP1 x64, Windows 10, Windows 11)
+
+Because Flutter 3.22+ / Dart 3.4+ dropped Windows 7 support, `mobile_app/` is kept compatible with **Flutter 3.19.6 (Dart 3.3.4)** (the final stable Flutter release supporting Windows 7 SP1 x64 alongside Windows 10 and Windows 11).
+
+- **Option 1 — Automated GitHub Actions Build (Recommended if developing on Linux):**
+  Push to GitHub (or run the **Build Windows** workflow manually via `workflow_dispatch`). `.github/workflows/build-windows.yml` builds with **Flutter 3.19.6** on `windows-2022`, bundles MSVC + UCRT runtime DLLs, runs `scripts/verify_win7_pe.py` to audit PE subsystem and static imports against Windows 7 APIs, and uploads `fb_group_poster-windows-x64-win7-10-11.zip`.
+
+- **Option 2 — Build Locally on Windows:**
+  Install Visual Studio 2022 (*Desktop development with C++*) and **Flutter 3.19.6**, then run:
+  ```powershell
+  powershell -ExecutionPolicy Bypass -File scripts\build_windows.ps1
+  ```
+  The portable ZIP is output to `dist\fb_group_poster-windows-x64-win7-10-11.zip`.
+
+> **Windows 7 Prerequisites:**
+> - Requires **64-bit Windows 7 SP1** with the Windows 7 Platform Update (KB2670838 / Direct3D 11.1). 32-bit Windows 7 is not supported by Flutter.
+> - MSVC (`vcruntime140*.dll`, `msvcp140.dll`) and Universal C Runtime (`ucrtbase.dll`, `api-ms-win-crt-*.dll`) DLLs are bundled next to `fb_group_poster.exe`.
+> - On Windows, the app uses **Python Bridge** mode (`bridge_server.py`). Windows 10/11 can run `bridge_server.py` locally; Windows 7 users should connect to `bridge_server.py` hosted on a Windows 10/11 or Linux PC (modern Chromium/Playwright requires Windows 10+ or Linux).

@@ -16,8 +16,25 @@ enum AnonymousPolicy {
 
 /// Persisted poster configuration mirroring config.json options.
 class AppSettings {
+  static const List<String> defaultGroups = [
+    'https://www.facebook.com/groups/2338817133078126/',
+    'https://www.facebook.com/groups/356949655982125/',
+    'https://www.facebook.com/groups/4369447123145015/',
+    'https://www.facebook.com/groups/305533033724233/',
+    'https://www.facebook.com/groups/538858678019757/',
+    'https://www.facebook.com/groups/32805080205772085/',
+    'https://www.facebook.com/groups/9863293940361144/',
+    'https://www.facebook.com/groups/536800640731186/',
+    'https://www.facebook.com/groups/432165591420240/',
+    'https://www.facebook.com/groups/661920747330839/',
+    'https://www.facebook.com/groups/1477161749230307/',
+    'https://www.facebook.com/groups/354321778673724/',
+    'https://www.facebook.com/groups/1228346991425028/',
+    'https://www.facebook.com/groups/1401662116893508/',
+  ];
+
   const AppSettings({
-    this.groups = const [],
+    this.groups = defaultGroups,
     this.anonymousPolicy = AnonymousPolicy.preferAnonymous,
     this.requireAnonymousIfAvailable = false,
     this.dryRun = false,

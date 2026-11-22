@@ -1,0 +1,136 @@
+name: Build Windows (Win 7 SP1 x64 / Win 10 / Win 11)
+
+on:
+  push:
+    branches: [main, master]
+    tags: ['v*']
+    paths:
+      - 'mobile_app/**'
+      - 'scripts/verify_win7_pe.py'
+      - 'scripts/build_windows.ps1'
+      - '.github/workflows/build-windows.yml'
+  pull_request:
+    paths:
+      - 'mobile_app/**'
+      - 'scripts/verify_win7_pe.py'
+      - '.github/workflows/build-windows.yml'
+  workflow_dispatch:
+
+jobs:
+  build-windows:
+    name: Windows x64 Release (Flutter 3.19.6 - Win 7/10/11)
+    runs-on: windows-2022
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter 3.19.6 (last release supporting Windows 7 SP1 x64)
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.19.6'
+          channel: 'stable'
+          cache: true
+
+      - name: Setup Python 3 (for PE compatibility audit)
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Verify Flutter & Dart versions
+        shell: pwsh
+        run: |
+          flutter --version
+          flutter config --enable-windows-desktop
+
+      - name: Install pub dependencies
+        working-directory: mobile_app
+        run: flutter pub get
+
+      - name: Analyze & run tests
+        working-directory: mobile_app
+        run: |
+          flutter analyze
+          flutter test
+
+      - name: Build Windows x64 Release
+        working-directory: mobile_app
+        run: flutter build windows --release
+
+      - name: Bundle MSVC & UCRT runtime DLLs for portable Win 7 SP1 / 10 / 11 execution
+        shell: pwsh
+        run: |
+          $releaseDir = "mobile_app\build\windows\x64\runner\Release"
+          if (-not (Test-Path $releaseDir)) {
+            $releaseDir = "mobile_app\build\windows\runner\Release"
+          }
+          if (-not (Test-Path $releaseDir)) {
+            throw "Release directory not found!"
+          }
+          echo "RELEASE_DIR=$releaseDir" >> $env:GITHUB_ENV
+
+          # Ensure MSVC runtime DLLs are present next to fb_group_poster.exe
+          $vcRedistDirs = Get-ChildItem -Path "C:\Program Files\Microsoft Visual Studio\2022\*\VC\Redist\MSVC\*\x64\Microsoft.VC143.CRT" -ErrorAction SilentlyContinue | Sort-Object FullName -Descending
+          if ($vcRedistDirs) {
+            foreach ($dll in @("vcruntime140.dll", "vcruntime140_1.dll", "msvcp140.dll", "concrt140.dll")) {
+              $src = Join-Path $vcRedistDirs[0].FullName $dll
+              $dst = Join-Path $releaseDir $dll
+              if ((Test-Path $src) -and -not (Test-Path $dst)) {
+                Copy-Item -Path $src -Destination $dst -Force
+              }
+            }
+          }
+
+          # Ensure Universal C Runtime (UCRT) DLLs are bundled for Windows 7 SP1
+          $ucrtDirs = Get-ChildItem -Path "C:\Program Files (x86)\Windows Kits\10\Redist\*\ucrt\DLLs\x64" -ErrorAction SilentlyContinue | Sort-Object FullName -Descending
+          if ($ucrtDirs) {
+            Get-ChildItem -Path $ucrtDirs[0].FullName -Filter "*.dll" | ForEach-Object {
+              $dst = Join-Path $releaseDir $_.Name
+              if (-not (Test-Path $dst)) {
+                Copy-Item -Path $_.FullName -Destination $dst -Force
+              }
+            }
+          }
+
+          # Add quick-start guide inside the portable package
+          @"
+          FB Group Poster - Windows Portable Release (x64)
+          ================================================
+          Supported OS:
+            - Windows 7 SP1 (64-bit, with Platform Update KB2670838)
+            - Windows 10 (64-bit)
+            - Windows 11 (64-bit)
+
+          Quick Start:
+            1. Extract the entire ZIP folder (keep all DLLs and the `data` folder next to fb_group_poster.exe).
+            2. Run `fb_group_poster.exe`.
+            3. Open the side menu -> FB Account -> set your Python Bridge Server URL
+               (run `python bridge_server.py --host 0.0.0.0 --port 8765` on your Windows 10/11 or Linux host).
+
+          Note for Windows 7 SP1 x64:
+            - VC++ Runtime and Universal C Runtime (UCRT) DLLs are bundled in this folder.
+            - Ensure Windows 7 SP1 is 64-bit and has the Windows 7 Platform Update (KB2670838 / Direct3D 11.1).
+            - On Windows 7, run `bridge_server.py` on a Windows 10/11 or Linux PC on your network and point
+              the Bridge Server URL to it (modern Chromium/Playwright requires Windows 10+ or Linux).
+          "@ | Set-Content -Path (Join-Path $releaseDir "README-WINDOWS.txt") -Encoding UTF8
+
+          Get-ChildItem -Path $releaseDir
+
+      - name: Audit PE headers & imports for Windows 7 / 10 / 11 compatibility
+        run: python scripts/verify_win7_pe.py "${{ env.RELEASE_DIR }}"
+
+      - name: Package portable ZIP
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path "dist" -Force | Out-Null
+          $zipPath = "dist\fb_group_poster-windows-x64-win7-10-11.zip"
+          if (Test-Path $zipPath) { Remove-Item $zipPath -Force }
+          Compress-Archive -Path "${{ env.RELEASE_DIR }}\*" -DestinationPath $zipPath -CompressionLevel Optimal
+          Get-Item $zipPath
+
+      - name: Upload Windows build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: fb_group_poster-windows-x64-win7-10-11
+          path: dist/fb_group_poster-windows-x64-win7-10-11.zip
+          retention-days: 30

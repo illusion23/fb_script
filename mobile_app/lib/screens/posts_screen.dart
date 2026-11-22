@@ -5,6 +5,7 @@ import 'package:image_picker/image_picker.dart';
 
 import '../models/post_template.dart';
 import '../services/poster_runner.dart';
+import '../utils/compat_theme.dart';
 import '../utils/text_direction_helper.dart';
 
 /// Side-menu screen for creating, editing, duplicating, deleting, and
@@ -73,7 +74,7 @@ class PostsScreen extends StatelessWidget {
                     Container(
                       padding: const EdgeInsets.all(20),
                       decoration: BoxDecoration(
-                        color: scheme.primaryContainer.withValues(alpha: 0.5),
+                        color: colorWithOpacity(scheme.primaryContainer, 0.5),
                         shape: BoxShape.circle,
                       ),
                       child: Icon(
@@ -123,16 +124,12 @@ class PostsScreen extends StatelessWidget {
               itemBuilder: (context, index) {
                 final post = posts[index];
                 final isDefault = post.id == defaultId;
-                return Card(
+                return AppCard(
                   margin: const EdgeInsets.only(bottom: 12),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(18),
-                    side: isDefault
-                        ? BorderSide(color: scheme.primary, width: 2)
-                        : BorderSide(
-                            color:
-                                scheme.outlineVariant.withValues(alpha: 0.55),
-                          ),
+                  shape: appCardShape(
+                    scheme,
+                    borderColor: isDefault ? scheme.primary : null,
+                    borderWidth: isDefault ? 2 : 1,
                   ),
                   child: InkWell(
                     borderRadius: BorderRadius.circular(18),
@@ -187,8 +184,10 @@ class PostsScreen extends StatelessWidget {
                               width: double.infinity,
                               padding: const EdgeInsets.all(12),
                               decoration: BoxDecoration(
-                                color: scheme.surfaceContainerHighest
-                                    .withValues(alpha: 0.45),
+                                color: colorWithOpacity(
+                                  surfaceContainerHighestCompat(scheme),
+                                  0.45,
+                                ),
                                 borderRadius: BorderRadius.circular(12),
                               ),
                               child: Directionality(
@@ -210,7 +209,7 @@ class PostsScreen extends StatelessWidget {
                               child: ListView.separated(
                                 scrollDirection: Axis.horizontal,
                                 itemCount: post.imagePaths.length,
-                                separatorBuilder: (_, _) =>
+                                separatorBuilder: (context, index) =>
                                     const SizedBox(width: 8),
                                 itemBuilder: (_, idx) {
                                   final path = post.imagePaths[idx];
@@ -228,7 +227,9 @@ class PostsScreen extends StatelessWidget {
                                             width: 60,
                                             height: 60,
                                             color:
-                                                scheme.surfaceContainerHighest,
+                                                surfaceContainerHighestCompat(
+                                              scheme,
+                                            ),
                                             child: const Icon(
                                                 Icons.image_outlined),
                                           ),
@@ -465,7 +466,8 @@ class _PostEditorSheetState extends State<_PostEditorSheet> {
                   child: ListView.separated(
                     scrollDirection: Axis.horizontal,
                     itemCount: _imagePaths.length,
-                    separatorBuilder: (_, _) => const SizedBox(width: 10),
+                    separatorBuilder: (context, index) =>
+                        const SizedBox(width: 10),
                     itemBuilder: (_, idx) {
                       final path = _imagePaths[idx];
                       final file = File(path);
@@ -483,9 +485,9 @@ class _PostEditorSheetState extends State<_PostEditorSheet> {
                                 : Container(
                                     width: 76,
                                     height: 76,
-                                    color: Theme.of(context)
-                                        .colorScheme
-                                        .surfaceContainerHighest,
+                                    color: surfaceContainerHighestCompat(
+                                      Theme.of(context).colorScheme,
+                                    ),
                                     child: const Icon(Icons.image_outlined),
                                   ),
                           ),

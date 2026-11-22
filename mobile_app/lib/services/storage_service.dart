@@ -17,6 +17,7 @@ class StorageService {
   static const _keyDefaultPostId = 'fb_poster.default_post_id';
   static const _keySettings = 'fb_poster.settings';
   static const _keyHistory = 'fb_poster.history';
+  static const _keyDefaultGroupsSeeded = 'fb_poster.default_groups_v1_seeded';
 
   final SharedPreferences _prefs;
 
@@ -82,6 +83,13 @@ class StorageService {
 
   Future<void> saveSettings(AppSettings settings) async {
     await _prefs.setString(_keySettings, jsonEncode(settings.toJson()));
+  }
+
+  bool hasSeededDefaultGroups() =>
+      _prefs.getBool(_keyDefaultGroupsSeeded) ?? false;
+
+  Future<void> markDefaultGroupsSeeded() async {
+    await _prefs.setBool(_keyDefaultGroupsSeeded, true);
   }
 
   List<RunHistoryEntry> loadHistory() {

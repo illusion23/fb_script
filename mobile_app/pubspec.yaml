@@ -16,10 +16,13 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 1.0.0+1
+version: 1.0.1+2
 
 environment:
-  sdk: ^3.12.2
+  # Dart 3.3.x / Flutter 3.19.6 is the final release supporting Windows 7 SP1 x64
+  # alongside Windows 10 and Windows 11.
+  sdk: '>=3.3.0 <4.0.0'
+  flutter: '>=3.19.0'
 
 # Dependencies specify other packages that your package needs in order to work.
 # To automatically upgrade your package dependencies to the latest versions
@@ -34,12 +37,12 @@ dependencies:
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.
   cupertino_icons: ^1.0.8
-  shared_preferences: ^2.5.6
-  http: ^1.6.0
-  webview_flutter: ^4.14.1
-  image_picker: ^1.2.4
-  intl: ^0.20.3
-  webview_flutter_android: ^4.14.1
+  shared_preferences: ^2.2.3
+  http: ^1.2.0
+  # Pinned to 4.8.x for Flutter 3.19.6 (Windows 7/10/11) compatibility.
+  webview_flutter: '>=4.8.0 <4.9.0'
+  image_picker: ^1.1.0
+  intl: ^0.19.0
 
 dev_dependencies:
   flutter_test:
@@ -50,7 +53,7 @@ dev_dependencies:
   # activated in the `analysis_options.yaml` file located at the root of your
   # package. See that file for information about deactivating specific lint
   # rules and activating additional ones.
-  flutter_lints: ^6.0.0
+  flutter_lints: ^4.0.0
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec

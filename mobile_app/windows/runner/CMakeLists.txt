@@ -30,6 +30,11 @@ target_compile_definitions(${BINARY_NAME} PRIVATE "FLUTTER_VERSION_BUILD=${FLUTT
 # Disable Windows macros that collide with C++ standard library functions.
 target_compile_definitions(${BINARY_NAME} PRIVATE "NOMINMAX")
 
+# Target Windows 7 SP1 (0x0601) minimum OS APIs and PE subsystem 6.01 so the
+# executable runs on Windows 7 SP1 x64, Windows 10, and Windows 11.
+target_compile_definitions(${BINARY_NAME} PRIVATE "_WIN32_WINNT=0x0601" "WINVER=0x0601")
+target_link_options(${BINARY_NAME} PRIVATE "/SUBSYSTEM:WINDOWS,6.01")
+
 # Add dependency libraries and include directories. Add any application-specific
 # dependencies here.
 target_link_libraries(${BINARY_NAME} PRIVATE flutter flutter_wrapper_app)

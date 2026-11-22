@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
 
 import 'screens/account_screen.dart';
+import 'screens/groups_screen.dart';
 import 'screens/history_screen.dart';
 import 'screens/home_screen.dart';
+import 'screens/options_screen.dart';
 import 'screens/posts_screen.dart';
 import 'services/poster_runner.dart';
 import 'services/storage_service.dart';
+import 'utils/compat_theme.dart';
 import 'widgets/app_drawer.dart';
 
 Future<void> main() async {
@@ -31,11 +34,12 @@ class FbGroupPosterApp extends StatelessWidget {
       useMaterial3: true,
       scaffoldBackgroundColor:
           isLight ? const Color(0xFFF4F6FA) : colorScheme.surface,
+      cardColor: isLight ? Colors.white : surfaceContainerLowCompat(colorScheme),
       appBarTheme: AppBarTheme(
         centerTitle: false,
         scrolledUnderElevation: 1,
         backgroundColor:
-            isLight ? Colors.white : colorScheme.surfaceContainerLow,
+            isLight ? Colors.white : surfaceContainerLowCompat(colorScheme),
         titleTextStyle: TextStyle(
           color: colorScheme.onSurface,
           fontSize: 19,
@@ -43,22 +47,14 @@ class FbGroupPosterApp extends StatelessWidget {
           letterSpacing: -0.2,
         ),
       ),
-      cardTheme: CardThemeData(
-        elevation: 0,
-        color: isLight ? Colors.white : colorScheme.surfaceContainerLow,
-        margin: EdgeInsets.zero,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(18),
-          side: BorderSide(
-            color: colorScheme.outlineVariant.withValues(alpha: 0.55),
-          ),
-        ),
-      ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
         fillColor: isLight
             ? const Color(0xFFF8FAFC)
-            : colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
+            : colorWithOpacity(
+                surfaceContainerHighestCompat(colorScheme),
+                0.4,
+              ),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
           borderSide: BorderSide(color: colorScheme.outlineVariant),
@@ -66,7 +62,7 @@ class FbGroupPosterApp extends StatelessWidget {
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
           borderSide: BorderSide(
-            color: colorScheme.outlineVariant.withValues(alpha: 0.8),
+            color: colorWithOpacity(colorScheme.outlineVariant, 0.8),
           ),
         ),
         contentPadding:
@@ -107,6 +103,8 @@ class _MainShellState extends State<MainShell> {
         AppSection.home => 'FB Group Poster',
         AppSection.account => 'FB Account',
         AppSection.posts => 'Default Post',
+        AppSection.groups => 'Target Groups',
+        AppSection.options => 'Script Options',
         AppSection.history => 'Script History',
       };
 
@@ -152,6 +150,10 @@ class _MainShellState extends State<MainShell> {
                 AppSection.account =>
                   AccountScreen(controller: widget.controller),
                 AppSection.posts => PostsScreen(controller: widget.controller),
+                AppSection.groups =>
+                  GroupsScreen(controller: widget.controller),
+                AppSection.options =>
+                  OptionsScreen(controller: widget.controller),
                 AppSection.history =>
                   HistoryScreen(controller: widget.controller),
               },

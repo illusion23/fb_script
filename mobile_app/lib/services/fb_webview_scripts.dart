@@ -235,19 +235,31 @@ class FbWebViewScripts {
         return null;
       }
 
+      function isCommentTextbox(tb) {
+        const label = (
+          (tb.getAttribute('aria-label') || '') + ' ' +
+          (tb.getAttribute('placeholder') || '')
+        ).toLowerCase();
+        return label.includes('comment') ||
+               label.includes('commentaire') ||
+               label.includes('تعليق') ||
+               label.includes('reply') ||
+               label.includes('رد');
+      }
+
       function getComposerContainer() {
-        // 1. Desktop Comet modal dialog with editable textbox
+        // 1. Desktop Comet modal dialog with editable post textbox
         const dialogs = document.querySelectorAll("[role='dialog']");
         for (const dlg of dialogs) {
           if (!isVisible(dlg)) continue;
           const tb = dlg.querySelector("[role='textbox'][contenteditable='true'], textarea");
-          if (tb && isVisible(tb)) return dlg;
+          if (tb && isVisible(tb) && !isCommentTextbox(tb)) return dlg;
         }
-        // 2. Fallback for mobile/full-screen composer without [role='dialog']
-        const textboxes = document.querySelectorAll("[role='textbox'][contenteditable='true'], form[action*='composer'] textarea, [data-sigil*='composer'] textarea");
+        // 2. Fallback ONLY for dedicated mobile composer forms (never feed [role='main'])
+        const textboxes = document.querySelectorAll("form[action*='composer'] textarea, form[action*='composer'] [role='textbox'][contenteditable='true'], [data-sigil*='composer'] textarea, [data-sigil*='composer'] [role='textbox'][contenteditable='true']");
         for (const tb of textboxes) {
-          if (!isVisible(tb)) continue;
-          const container = tb.closest("[role='dialog'], form, [data-sigil*='composer'], [role='main']") || tb.parentElement;
+          if (!isVisible(tb) || isCommentTextbox(tb)) continue;
+          const container = tb.closest("[role='dialog'], form[action*='composer'], [data-sigil*='composer']");
           if (container) return container;
         }
         return null;
@@ -391,7 +403,10 @@ class FbWebViewScripts {
     final imgsJson = jsonEncode(imagesBase64);
     return '''
       (function() {
-        const SUBMIT_BUTTON_NAMES = ["post", "publier", "نشر", "submit", "envoyer", "إرسال", "publicar", "posten"];
+        const SUBMIT_BUTTON_NAMES = [
+          "post", "publier", "نشر", "submit", "envoyer", "إرسال",
+          "publicar", "posten"
+        ];
         const PHOTO_BUTTON_LABELS = ["photo/video", "photo / vidéo", "photo/vidéo", "صورة/فيديو"];
 
         function isVisible(el) {
@@ -402,20 +417,34 @@ class FbWebViewScripts {
                  style.visibility !== 'hidden' && style.display !== 'none';
         }
 
+        function isCommentTextbox(tb) {
+          const label = (
+            (tb.getAttribute('aria-label') || '') + ' ' +
+            (tb.getAttribute('placeholder') || '')
+          ).toLowerCase();
+          return label.includes('comment') ||
+                 label.includes('commentaire') ||
+                 label.includes('تعليق') ||
+                 label.includes('reply') ||
+                 label.includes('رد');
+        }
+
         let container = null;
+        let isDialogContainer = false;
         for (const dlg of document.querySelectorAll("[role='dialog']")) {
           if (!isVisible(dlg)) continue;
           const tb = dlg.querySelector("[role='textbox'][contenteditable='true'], textarea");
-          if (tb && isVisible(tb)) {
+          if (tb && isVisible(tb) && !isCommentTextbox(tb)) {
             container = dlg;
+            isDialogContainer = true;
             break;
           }
         }
         if (!container) {
-          const textboxes = document.querySelectorAll("[role='textbox'][contenteditable='true'], form[action*='composer'] textarea, [data-sigil*='composer'] textarea");
+          const textboxes = document.querySelectorAll("form[action*='composer'] textarea, form[action*='composer'] [role='textbox'][contenteditable='true'], [data-sigil*='composer'] textarea, [data-sigil*='composer'] [role='textbox'][contenteditable='true']");
           for (const tb of textboxes) {
-            if (!isVisible(tb)) continue;
-            container = tb.closest("[role='dialog'], form, [data-sigil*='composer'], [role='main']") || tb.parentElement;
+            if (!isVisible(tb) || isCommentTextbox(tb)) continue;
+            container = tb.closest("[role='dialog'], form[action*='composer'], [data-sigil*='composer']");
             if (container) break;
           }
         }
@@ -430,28 +459,80 @@ class FbWebViewScripts {
           if (!tb) {
             return JSON.stringify({ status: 'error', error: 'Composer textbox not found' });
           }
-          tb.focus();
-          tb.click();
-          if (tb.tagName === 'TEXTAREA') {
-            const setter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value').set;
-            setter.call(tb, msg);
-            tb.dispatchEvent(new Event('input', { bubbles: true }));
-            tb.dispatchEvent(new Event('change', { bubbles: true }));
-          } else {
-            try {
-              document.execCommand('selectAll', false, null);
-              document.execCommand('insertText', false, msg);
-            } catch (e) {
-              tb.innerText = msg;
-              tb.dispatchEvent(new InputEvent('input', { bubbles: true, data: msg, inputType: 'insertText' }));
+          const normalizeWs = (s) => (s || '').replace(/\\s+/g, ' ').trim();
+          const existingText = normalizeWs(tb.tagName === 'TEXTAREA' ? tb.value : tb.innerText);
+          if (tb.dataset.fbPosterFilled !== '1' && existingText !== normalizeWs(msg)) {
+            tb.focus();
+            tb.click();
+            if (tb.tagName === 'TEXTAREA') {
+              const setter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value').set;
+              setter.call(tb, msg);
+              tb.dispatchEvent(new Event('input', { bubbles: true }));
+              tb.dispatchEvent(new Event('change', { bubbles: true }));
+            } else {
+              // Place collapsed Selection inside Lexical editor before inserting text.
+              try {
+                const targetNode = tb.querySelector('p') || tb;
+                const range = document.createRange();
+                range.selectNodeContents(targetNode);
+                range.collapse(true);
+                const sel = window.getSelection();
+                if (sel) {
+                  sel.removeAllRanges();
+                  sel.addRange(range);
+                }
+              } catch (_) {}
+
+              let inserted = false;
+              try {
+                inserted = document.execCommand('insertText', false, msg);
+              } catch (_) {}
+
+              if (!inserted || (tb.innerText || '').trim().length === 0) {
+                try {
+                  const dt = new DataTransfer();
+                  dt.setData('text/plain', msg);
+                  const pasteEvt = new ClipboardEvent('paste', {
+                    clipboardData: dt,
+                    bubbles: true,
+                    cancelable: true
+                  });
+                  tb.dispatchEvent(pasteEvt);
+                } catch (_) {}
+              }
+
+              if ((tb.innerText || '').trim().length === 0) {
+                try {
+                  tb.dispatchEvent(new InputEvent('beforeinput', {
+                    bubbles: true,
+                    cancelable: true,
+                    inputType: 'insertText',
+                    data: msg
+                  }));
+                } catch (_) {}
+                if ((tb.innerText || '').trim().length === 0) {
+                  tb.innerText = msg;
+                }
+                tb.dispatchEvent(new InputEvent('input', {
+                  bubbles: true,
+                  data: msg,
+                  inputType: 'insertText'
+                }));
+              }
             }
+            if ((tb.tagName === 'TEXTAREA' ? (tb.value || '') : (tb.innerText || '')).trim().length > 0) {
+              tb.dataset.fbPosterFilled = '1';
+            }
+            // Give React/Lexical a frame to enable the Post button after inserting text.
+            return JSON.stringify({ status: 'waiting_submit' });
           }
         }
 
         const imgs = $imgsJson;
         if (imgs && imgs.length > 0) {
           let fileInput = container.querySelector("input[type='file'][accept*='image' i]") ||
-                          container.querySelector("input[type='file']");
+                          container.querySelector("input[type='file']") ||
+                          document.querySelector("input[type='file'][accept*='image' i]");
           if (!fileInput) {
             const buttons = container.querySelectorAll("[role='button'], button");
             for (const b of buttons) {
@@ -461,9 +542,10 @@ class FbWebViewScripts {
                 break;
               }
             }
-            fileInput = container.querySelector("input[type='file']");
+            fileInput = container.querySelector("input[type='file']") ||
+                        document.querySelector("input[type='file']");
           }
-          if (fileInput) {
+          if (fileInput && fileInput.dataset.fbPosterAttached !== '1') {
             try {
               const dt = new DataTransfer();
               for (const item of imgs) {
@@ -476,6 +558,7 @@ class FbWebViewScripts {
                 dt.items.add(new File([blob], item.name || 'image.jpg', { type: item.mimeType || 'image/jpeg' }));
               }
               fileInput.files = dt.files;
+              fileInput.dataset.fbPosterAttached = '1';
               fileInput.dispatchEvent(new Event('change', { bubbles: true }));
             } catch (err) {
               return JSON.stringify({ status: 'error', error: 'Failed to attach image in WebView: ' + err });
@@ -529,22 +612,48 @@ class FbWebViewScripts {
           }
         }
 
-        const buttons = container.querySelectorAll("[role='button'], button, input[type='submit']");
-        let submitBtn = null;
-        for (const btn of buttons) {
-          if (!isVisible(btn)) continue;
-          const label = (btn.innerText || btn.getAttribute('aria-label') || btn.value || '').trim().toLowerCase();
-          if (SUBMIT_BUTTON_NAMES.includes(label)) {
-            submitBtn = btn;
-            break;
+        function findSubmitButton(scope) {
+          const directTestId = scope.querySelector("[data-testid='react-composer-post-button']");
+          if (directTestId && isVisible(directTestId)) return directTestId;
+
+          const candidates = scope.querySelectorAll("[role='button'], button, input[type='submit'], a[role='button']");
+          for (const btn of candidates) {
+            if (!isVisible(btn)) continue;
+            const textLabel = (btn.innerText || '').trim().toLowerCase();
+            const ariaLabel = (btn.getAttribute('aria-label') || '').trim().toLowerCase();
+            const valueLabel = (btn.value || '').trim().toLowerCase();
+            if (
+              SUBMIT_BUTTON_NAMES.includes(textLabel) ||
+              SUBMIT_BUTTON_NAMES.includes(ariaLabel) ||
+              SUBMIT_BUTTON_NAMES.includes(valueLabel)
+            ) {
+              return btn;
+            }
           }
+          return null;
+        }
+
+        let submitBtn = findSubmitButton(container);
+        if (!submitBtn && !isDialogContainer) {
+          // Only mobile non-dialog composer forms render the Post button in a sibling header bar.
+          submitBtn = findSubmitButton(document);
         }
         if (!submitBtn) {
-          return JSON.stringify({ status: 'error', error: 'Submit button (Post/Publier/نشر) not found' });
+          const seenLabels = [];
+          for (const btn of container.querySelectorAll("[role='button'], button, input[type='submit']")) {
+            if (!isVisible(btn)) continue;
+            const lbl = ((btn.innerText || '').trim() || (btn.getAttribute('aria-label') || '').trim());
+            if (lbl && seenLabels.length < 10) seenLabels.push(lbl);
+          }
+          return JSON.stringify({
+            status: 'waiting_submit_button',
+            buttons: seenLabels
+          });
         }
         if (submitBtn.getAttribute('aria-disabled') === 'true' || submitBtn.disabled) {
           return JSON.stringify({ status: 'waiting_submit' });
         }
+        submitBtn.scrollIntoView({ block: 'center' });
         submitBtn.click();
         return JSON.stringify({ status: 'submitted' });
       })();
@@ -553,11 +662,25 @@ class FbWebViewScripts {
 
   static String isComposerClosed() => '''
     (function() {
+      function isCommentTextbox(tb) {
+        const label = (
+          (tb.getAttribute('aria-label') || '') + ' ' +
+          (tb.getAttribute('placeholder') || '')
+        ).toLowerCase();
+        return label.includes('comment') || label.includes('commentaire') || label.includes('تعليق');
+      }
       const dialogs = document.querySelectorAll("[role='dialog']");
       for (const dlg of dialogs) {
         const rect = dlg.getBoundingClientRect();
-        if (rect.width > 0 && rect.height > 0 &&
-            dlg.querySelector("[role='textbox'][contenteditable='true'], textarea")) {
+        const tb = dlg.querySelector("[role='textbox'][contenteditable='true'], textarea");
+        if (rect.width > 0 && rect.height > 0 && tb && !isCommentTextbox(tb)) {
+          return 'false';
+        }
+      }
+      const textboxes = document.querySelectorAll("form[action*='composer'] textarea, [data-sigil*='composer'] textarea");
+      for (const tb of textboxes) {
+        const rect = tb.getBoundingClientRect();
+        if (rect.width > 0 && rect.height > 0 && !isCommentTextbox(tb)) {
           return 'false';
         }
       }

@@ -6,7 +6,6 @@ import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:webview_flutter/webview_flutter.dart';
-import 'package:webview_flutter_android/webview_flutter_android.dart';
 
 import '../models/app_settings.dart';
 import '../models/fb_account.dart';
@@ -86,6 +85,18 @@ class AppStateController extends ChangeNotifier {
     _defaultPostId = _storage.loadDefaultPostId();
     _settings = _storage.loadSettings();
     _history = List<RunHistoryEntry>.from(_storage.loadHistory());
+
+    if (!_storage.hasSeededDefaultGroups()) {
+      final merged = <String>[..._settings.groups];
+      for (final g in AppSettings.defaultGroups) {
+        if (!merged.contains(g)) {
+          merged.add(g);
+        }
+      }
+      _settings = _settings.copyWith(groups: merged);
+      _storage.saveSettings(_settings);
+      _storage.markDefaultGroupsSeeded();
+    }
 
     // Default to Bridge on desktop platforms where embedded WebView is absent.
     if (!isWebViewSupported && _settings.executionMode == ExecutionMode.webView) {
@@ -199,6 +210,12 @@ class AppStateController extends ChangeNotifier {
     await updateSettings(_settings.copyWith(groups: updated));
   }
 
+  Future<void> restoreDefaultGroups() async {
+    await updateSettings(
+      _settings.copyWith(groups: List<String>.from(AppSettings.defaultGroups)),
+    );
+  }
+
   // ---------------------------------------------------------------------------
   // History Management
   // ---------------------------------------------------------------------------
@@ -295,10 +312,6 @@ class AppStateController extends ChangeNotifier {
           },
         ),
       );
-    if (!kIsWeb && Platform.isAndroid && controller.platform is AndroidWebViewController) {
-      final androidCtrl = controller.platform as AndroidWebViewController;
-      androidCtrl.setUseWideViewPort(true);
-    }
     _webViewController = controller;
     return controller;
   }
@@ -651,7 +664,12 @@ class AppStateController extends ChangeNotifier {
           res['reason'] ?? 'Account is not a member of this group.',
         );
       }
-      await Future<void>.delayed(const Duration(milliseconds: 600));
+      final pauseMs = (status == 'trigger_clicked' ||
+              status == 'toggled_anonymous' ||
+              status == 'dismissed_intro')
+          ? 1000
+          : 600;
+      await Future<void>.delayed(Duration(milliseconds: pauseMs));
     }
     throw Exception(
       'Timed out waiting for group post composer dialog. '
@@ -667,6 +685,7 @@ class AppStateController extends ChangeNotifier {
     bool requireAnonymous = false,
   }) async {
     final deadline = DateTime.now().add(const Duration(seconds: 12));
+    Map<String, dynamic> lastRes = const {};
     while (DateTime.now().isBefore(deadline)) {
       if (_stopRequested) throw Exception('Stopped by user');
       final res = _decodeJsMap(
@@ -679,6 +698,7 @@ class AppStateController extends ChangeNotifier {
           ),
         ),
       );
+      lastRes = res;
       final status = res['status'] as String? ?? '';
       if (status == 'dry_run_ok') return 'dry_run_ok';
       if (status == 'anonymous_unavailable') return 'anonymous_unavailable';
@@ -704,7 +724,10 @@ class AppStateController extends ChangeNotifier {
       }
       await Future<void>.delayed(const Duration(milliseconds: 600));
     }
-    throw Exception('Submit button remained disabled or unavailable.');
+    throw Exception(
+      'Submit button (Post/Publier/نشر) remained unavailable. '
+      'Last state: ${jsonEncode(lastRes)}',
+    );
   }
 
   Future<void> _waitCancellableDelay(double seconds) async {

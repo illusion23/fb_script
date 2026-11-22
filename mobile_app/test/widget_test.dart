@@ -147,27 +147,13 @@ void main() {
         await tester.pumpWidget(FbGroupPosterApp(controller: controller));
         await tester.pumpAndSettle();
 
-        // Main screen has Start and Stop buttons and anonymous mode controls
+        // Main screen has centered Start and Stop buttons
         expect(find.byKey(const Key('start_script_button')), findsOneWidget);
         expect(find.byKey(const Key('stop_script_button')), findsOneWidget);
         expect(
           controller.settings.anonymousPolicy,
           AnonymousPolicy.preferAnonymous,
         );
-        final anonGuardFinder =
-            find.byKey(const Key('require_anonymous_if_available_switch'));
-        await tester.scrollUntilVisible(
-          anonGuardFinder,
-          300,
-          scrollable: find.byType(Scrollable).first,
-        );
-        await tester.ensureVisible(anonGuardFinder);
-        await tester.pumpAndSettle();
-        expect(anonGuardFinder, findsOneWidget);
-        expect(controller.settings.requireAnonymousIfAvailable, isFalse);
-        await tester.tap(anonGuardFinder);
-        await tester.pumpAndSettle();
-        expect(controller.settings.requireAnonymousIfAvailable, isTrue);
 
         // Open side menu (Drawer)
         await tester.tap(find.byTooltip('Open navigation menu'));
@@ -175,7 +161,38 @@ void main() {
 
         expect(find.text('FB Account (Email & Password)'), findsOneWidget);
         expect(find.text('Default Post (Create & Select)'), findsOneWidget);
+        expect(find.text('Target Groups'), findsOneWidget);
+        expect(find.text('Script Options'), findsOneWidget);
         expect(find.text('Script History'), findsOneWidget);
+
+        // Navigate to Script Options and toggle anonymous guard
+        await tester.tap(find.text('Script Options'));
+        await tester.pumpAndSettle();
+        final anonGuardFinder =
+            find.byKey(const Key('require_anonymous_if_available_switch'));
+        expect(anonGuardFinder, findsOneWidget);
+        expect(controller.settings.requireAnonymousIfAvailable, isFalse);
+        await tester.tap(anonGuardFinder);
+        await tester.pumpAndSettle();
+        expect(controller.settings.requireAnonymousIfAvailable, isTrue);
+
+        // Navigate to Target Groups and verify default groups + add group
+        await tester.tap(find.byTooltip('Open navigation menu'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Target Groups'));
+        await tester.pumpAndSettle();
+        expect(controller.settings.groups.length, 14);
+        await tester.enterText(
+          find.byKey(const Key('group_url_field')),
+          'https://www.facebook.com/groups/111/',
+        );
+        await tester.tap(find.text('Add'));
+        await tester.pumpAndSettle();
+        expect(controller.settings.groups.length, 15);
+
+        // Open side menu and navigate to FB Account
+        await tester.tap(find.byTooltip('Open navigation menu'));
+        await tester.pumpAndSettle();
 
         // Navigate to FB Account screen and save credentials
         await tester.tap(find.text('FB Account (Email & Password)'));

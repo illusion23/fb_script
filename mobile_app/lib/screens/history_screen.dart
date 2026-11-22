@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 
 import '../models/run_history.dart';
 import '../services/poster_runner.dart';
+import '../utils/compat_theme.dart';
 import '../utils/text_direction_helper.dart';
 
 /// Side-menu screen displaying execution history of the posting script,
@@ -126,10 +127,10 @@ class _HistoryScreenState extends State<HistoryScreen> {
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: Theme.of(context)
-                      .colorScheme
-                      .surfaceContainerHighest
-                      .withValues(alpha: 0.5),
+                  color: colorWithOpacity(
+                    surfaceContainerHighestCompat(Theme.of(context).colorScheme),
+                    0.5,
+                  ),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Directionality(
@@ -151,7 +152,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
               const Text('No groups were processed in this run.')
             else
               ...entry.results.map(
-                (r) => Card(
+                (r) => AppCard(
                   margin: const EdgeInsets.only(bottom: 8),
                   child: ListTile(
                     leading: Icon(
@@ -296,7 +297,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                   itemCount: filtered.length,
                   itemBuilder: (context, index) {
                     final entry = filtered[index];
-                    return Card(
+                    return AppCard(
                       margin: const EdgeInsets.only(bottom: 10),
                       child: ListTile(
                         contentPadding: const EdgeInsets.symmetric(
@@ -391,9 +392,9 @@ class _StatTile extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
         decoration: BoxDecoration(
-          color: color.withValues(alpha: 0.1),
+          color: colorWithOpacity(color, 0.1),
           borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: color.withValues(alpha: 0.28)),
+          border: Border.all(color: colorWithOpacity(color, 0.28)),
         ),
         child: Column(
           children: [
@@ -452,9 +453,9 @@ class _StatusBadge extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.14),
+        color: colorWithOpacity(color, 0.14),
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: color.withValues(alpha: 0.5)),
+        border: Border.all(color: colorWithOpacity(color, 0.5)),
       ),
       child: Text(
         label,
