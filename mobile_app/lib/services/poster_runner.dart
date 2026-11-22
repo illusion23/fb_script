@@ -132,15 +132,29 @@ class AppStateController extends ChangeNotifier {
       _storage.markDefaultGroupsSeeded();
     }
 
-    // Default to Built-In Desktop Browser on Windows/Linux/macOS where mobile WebView is absent.
-    if (!isWebViewSupported && _settings.executionMode == ExecutionMode.webView) {
-      _settings = _settings.copyWith(
-        executionMode: isDesktopBrowserSupported
-            ? ExecutionMode.desktopBrowser
-            : ExecutionMode.bridge,
-      );
-    } else if (!isDesktopBrowserSupported &&
-        _settings.executionMode == ExecutionMode.desktopBrowser) {
+    // Default to Built-In Desktop Browser on Windows/Linux/macOS (including a
+    // one-time migration for older desktop installs that auto-saved `bridge`).
+    if (isDesktopBrowserSupported) {
+      var changed = false;
+      if (_settings.executionMode == ExecutionMode.webView) {
+        _settings = _settings.copyWith(
+          executionMode: ExecutionMode.desktopBrowser,
+        );
+        changed = true;
+      } else if (!_storage.hasMigratedDesktopBrowserDefault() &&
+          _settings.executionMode == ExecutionMode.bridge) {
+        _settings = _settings.copyWith(
+          executionMode: ExecutionMode.desktopBrowser,
+        );
+        changed = true;
+      }
+      if (!_storage.hasMigratedDesktopBrowserDefault()) {
+        _storage.markDesktopBrowserDefaultMigrated();
+      }
+      if (changed) {
+        _storage.saveSettings(_settings);
+      }
+    } else if (_settings.executionMode == ExecutionMode.desktopBrowser) {
       _settings = _settings.copyWith(
         executionMode:
             isWebViewSupported ? ExecutionMode.webView : ExecutionMode.bridge,

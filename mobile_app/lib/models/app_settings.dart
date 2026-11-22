@@ -43,7 +43,7 @@ class AppSettings {
     this.delayMax = 12.0,
     this.bridgeUrl = 'http://127.0.0.1:8765',
     this.browserExecutablePath = '',
-    this.executionMode = ExecutionMode.webView,
+    this.executionMode = ExecutionMode.desktopBrowser,
   });
 
   final List<String> groups;
@@ -106,10 +106,10 @@ class AppSettings {
       };
 
   factory AppSettings.fromJson(Map<String, dynamic> json) {
-    final modeName = json['executionMode'] as String? ?? 'webView';
+    final modeName = json['executionMode'] as String? ?? 'desktopBrowser';
     final mode = ExecutionMode.values.firstWhere(
       (m) => m.name == modeName,
-      orElse: () => ExecutionMode.webView,
+      orElse: () => ExecutionMode.desktopBrowser,
     );
 
     AnonymousPolicy policy;

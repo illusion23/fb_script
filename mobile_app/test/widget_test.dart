@@ -236,6 +236,28 @@ void main() {
         await server.close(force: true);
       }
     });
+
+    test('defaults to desktopBrowser and migrates legacy desktop bridge once', () async {
+      expect(const AppSettings().executionMode, ExecutionMode.desktopBrowser);
+
+      SharedPreferences.setMockInitialValues({
+        'fb_poster.settings': jsonEncode({
+          'executionMode': 'bridge',
+          'bridgeUrl': 'http://127.0.0.1:8765',
+        }),
+      });
+
+      final storage = await StorageService.create();
+      final controller = AppStateController(storage)..init();
+      expect(controller.settings.executionMode, ExecutionMode.desktopBrowser);
+
+      // User can still explicitly switch back to bridge afterward and keep it.
+      await controller.updateSettings(
+        controller.settings.copyWith(executionMode: ExecutionMode.bridge),
+      );
+      final reloaded = AppStateController(storage)..init();
+      expect(reloaded.settings.executionMode, ExecutionMode.bridge);
+    });
   });
 
   group('Widget UI', () {

@@ -18,6 +18,8 @@ class StorageService {
   static const _keySettings = 'fb_poster.settings';
   static const _keyHistory = 'fb_poster.history';
   static const _keyDefaultGroupsSeeded = 'fb_poster.default_groups_v1_seeded';
+  static const _keyDesktopBrowserMigrated =
+      'fb_poster.desktop_browser_default_v1';
 
   final SharedPreferences _prefs;
 
@@ -90,6 +92,13 @@ class StorageService {
 
   Future<void> markDefaultGroupsSeeded() async {
     await _prefs.setBool(_keyDefaultGroupsSeeded, true);
+  }
+
+  bool hasMigratedDesktopBrowserDefault() =>
+      _prefs.getBool(_keyDesktopBrowserMigrated) ?? false;
+
+  Future<void> markDesktopBrowserDefaultMigrated() async {
+    await _prefs.setBool(_keyDesktopBrowserMigrated, true);
   }
 
   List<RunHistoryEntry> loadHistory() {
