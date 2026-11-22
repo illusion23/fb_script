@@ -87,7 +87,7 @@ Because Flutter 3.22+ / Dart 3.4+ dropped Windows 7 support, `mobile_app/` is ke
   ```
   The portable ZIP is output to `dist\fb_group_poster-windows-x64-win7-10-11.zip`.
 
-> **Windows 7 Prerequisites:**
-> - Requires **64-bit Windows 7 SP1** with the Windows 7 Platform Update (KB2670838 / Direct3D 11.1). 32-bit Windows 7 is not supported by Flutter.
+> **Windows 7 / 10 / 11 Standalone Operation (No Python Required):**
+> - Requires **64-bit Windows 7 SP1** (with Platform Update KB2670838 / Direct3D 11.1), **Windows 10**, or **Windows 11**. 32-bit Windows 7 is not supported by Flutter.
 > - MSVC (`vcruntime140*.dll`, `msvcp140.dll`) and Universal C Runtime (`ucrtbase.dll`, `api-ms-win-crt-*.dll`) DLLs are bundled next to `fb_group_poster.exe`.
-> - On Windows, the app uses **Python Bridge** mode (`bridge_server.py`). Windows 10/11 can run `bridge_server.py` locally; Windows 7 users should connect to `bridge_server.py` hosted on a Windows 10/11 or Linux PC (modern Chromium/Playwright requires Windows 10+ or Linux).
+> - By default on desktop, the app uses **Built-In Desktop Browser (CDP)** mode, driving your installed Chrome, Edge, Supermium (recommended for Windows 7), or Brave directly in pure Dart—no Python, Playwright, or bridge server required. (Python Bridge mode remains available in **Script Options** if you want remote execution.)

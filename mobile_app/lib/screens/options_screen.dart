@@ -18,6 +18,7 @@ class OptionsScreen extends StatefulWidget {
 class _OptionsScreenState extends State<OptionsScreen> {
   late final TextEditingController _delayMinController;
   late final TextEditingController _delayMaxController;
+  late final TextEditingController _browserPathController;
 
   @override
   void initState() {
@@ -28,13 +29,34 @@ class _OptionsScreenState extends State<OptionsScreen> {
     _delayMaxController = TextEditingController(
       text: widget.controller.settings.delayMax.toStringAsFixed(0),
     );
+    _browserPathController = TextEditingController(
+      text: widget.controller.settings.browserExecutablePath,
+    );
   }
 
   @override
   void dispose() {
     _delayMinController.dispose();
     _delayMaxController.dispose();
+    _browserPathController.dispose();
     super.dispose();
+  }
+
+  Future<void> _saveBrowserPath() async {
+    final path = _browserPathController.text.trim();
+    await widget.controller.updateSettings(
+      widget.controller.settings.copyWith(browserExecutablePath: path),
+    );
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          path.isEmpty
+              ? 'Browser path reset to auto-detect.'
+              : 'Custom browser path saved.',
+        ),
+      ),
+    );
   }
 
   Future<void> _setDelayPreset(double minVal, double maxVal) async {
@@ -310,6 +332,15 @@ class _OptionsScreenState extends State<OptionsScreen> {
                   ),
                   items: [
                     DropdownMenuItem(
+                      value: ExecutionMode.desktopBrowser,
+                      enabled: ctrl.isDesktopBrowserSupported,
+                      child: Text(
+                        ctrl.isDesktopBrowserSupported
+                            ? 'Built-In Desktop Browser (Chrome / Edge — No Python)'
+                            : 'Built-In Desktop Browser (Windows / Linux / macOS)',
+                      ),
+                    ),
+                    DropdownMenuItem(
                       value: ExecutionMode.webView,
                       enabled: ctrl.isWebViewSupported,
                       child: Text(
@@ -333,6 +364,43 @@ class _OptionsScreenState extends State<OptionsScreen> {
                           }
                         },
                 ),
+                if (ctrl.isDesktopBrowserSupported &&
+                    settings.executionMode == ExecutionMode.desktopBrowser) ...[
+                  const SizedBox(height: 12),
+                  Text(
+                    ctrl.detectedDesktopBrowserPath != null
+                        ? 'Detected browser: ${ctrl.detectedDesktopBrowserPath}'
+                        : 'No Chrome/Edge/Supermium/Brave auto-detected. Install Chrome/Edge (or Supermium on Windows 7) or set the .exe path below.',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: ctrl.detectedDesktopBrowserPath != null
+                          ? Colors.green.shade700
+                          : Colors.orange.shade800,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: _browserPathController,
+                          enabled: !ctrl.isRunning,
+                          decoration: const InputDecoration(
+                            labelText: 'Custom Browser Path (Optional)',
+                            hintText:
+                                r'Leave empty for auto-detect (e.g. C:\Program Files\...\chrome.exe)',
+                            isDense: true,
+                          ),
+                          onEditingComplete: _saveBrowserPath,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      FilledButton.tonal(
+                        onPressed: ctrl.isRunning ? null : _saveBrowserPath,
+                        child: const Text('Save'),
+                      ),
+                    ],
+                  ),
+                ],
               ],
             ),
           ),

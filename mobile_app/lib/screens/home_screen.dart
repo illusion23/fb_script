@@ -398,12 +398,17 @@ class _HomeScreenState extends State<HomeScreen> {
                   ],
                 ),
 
-                if (ctrl.needsManualAuth && ctrl.isWebViewSupported) ...[
+                if (ctrl.needsManualAuth &&
+                    (ctrl.isWebViewSupported ||
+                        settings.executionMode ==
+                            ExecutionMode.desktopBrowser)) ...[
                   const SizedBox(height: 10),
                   FilledButton.tonalIcon(
                     onPressed: () async {
                       await ctrl.openInteractiveLoginPage();
-                      if (context.mounted) {
+                      if (context.mounted &&
+                          ctrl.isWebViewSupported &&
+                          settings.executionMode == ExecutionMode.webView) {
                         await LiveWebViewSheet.show(context, ctrl);
                       }
                     },

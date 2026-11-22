@@ -12,18 +12,43 @@ import '../models/fb_account.dart';
 import '../models/post_template.dart';
 import '../models/run_history.dart';
 import '../utils/group_url_validator.dart';
+import 'desktop_browser_driver.dart';
 import 'fb_webview_scripts.dart';
 import 'storage_service.dart';
 
-/// Central application state and script runner controller supporting both
-/// on-device mobile WebView automation and companion Python bridge execution.
+/// Adapts [WebViewController] to the shared [AutomationBrowserSession] interface.
+class _WebViewBrowserSession implements AutomationBrowserSession {
+  _WebViewBrowserSession(this._controller, this._navigate);
+
+  final WebViewController _controller;
+  final Future<void> Function(WebViewController ctrl, String url) _navigate;
+
+  @override
+  Future<void> navigateAndWait(String url) => _navigate(_controller, url);
+
+  @override
+  Future<Object?> evalJs(String script) =>
+      _controller.runJavaScriptReturningResult(script);
+}
+
+/// Central application state and script runner controller supporting:
+/// - on-device mobile WebView automation (Android/iOS)
+/// - built-in desktop Chrome/Edge/Supermium CDP automation (Windows 7/10/11, Linux, macOS)
+/// - optional companion Python bridge execution (`bridge_server.py`)
 class AppStateController extends ChangeNotifier {
-  AppStateController(this._storage, {http.Client? httpClient})
-      : _http = httpClient ?? http.Client();
+  AppStateController(
+    this._storage, {
+    http.Client? httpClient,
+    DesktopBrowserDriver? desktopBrowserDriver,
+  })  : _http = httpClient ?? http.Client(),
+        _desktopDriverOverride = desktopBrowserDriver;
 
   final StorageService _storage;
   final http.Client _http;
+  final DesktopBrowserDriver? _desktopDriverOverride;
   final Random _random = Random();
+
+  DesktopBrowserDriver? _desktopDriver;
 
   FbAccount _account = const FbAccount();
   List<PostTemplate> _posts = [];
@@ -79,6 +104,15 @@ class AppStateController extends ChangeNotifier {
   bool get isWebViewSupported =>
       !kIsWeb && (Platform.isAndroid || Platform.isIOS);
 
+  bool get isDesktopBrowserSupported =>
+      !kIsWeb && (Platform.isWindows || Platform.isLinux || Platform.isMacOS);
+
+  String? get detectedDesktopBrowserPath => isDesktopBrowserSupported
+      ? DesktopBrowserDriver.findBrowserExecutable(
+          customPath: _settings.browserExecutablePath,
+        )
+      : null;
+
   void init() {
     _account = _storage.loadAccount();
     _posts = List<PostTemplate>.from(_storage.loadPosts());
@@ -98,9 +132,19 @@ class AppStateController extends ChangeNotifier {
       _storage.markDefaultGroupsSeeded();
     }
 
-    // Default to Bridge on desktop platforms where embedded WebView is absent.
+    // Default to Built-In Desktop Browser on Windows/Linux/macOS where mobile WebView is absent.
     if (!isWebViewSupported && _settings.executionMode == ExecutionMode.webView) {
-      _settings = _settings.copyWith(executionMode: ExecutionMode.bridge);
+      _settings = _settings.copyWith(
+        executionMode: isDesktopBrowserSupported
+            ? ExecutionMode.desktopBrowser
+            : ExecutionMode.bridge,
+      );
+    } else if (!isDesktopBrowserSupported &&
+        _settings.executionMode == ExecutionMode.desktopBrowser) {
+      _settings = _settings.copyWith(
+        executionMode:
+            isWebViewSupported ? ExecutionMode.webView : ExecutionMode.bridge,
+      );
     }
 
     if (_defaultPostId == null && _posts.isNotEmpty) {
@@ -316,7 +360,30 @@ class AppStateController extends ChangeNotifier {
     return controller;
   }
 
+  DesktopBrowserDriver _ensureDesktopDriver() {
+    if (_desktopDriverOverride != null) return _desktopDriverOverride;
+    final customPath = _settings.browserExecutablePath.trim();
+    if (_desktopDriver != null &&
+        _desktopDriver!.customBrowserPath != customPath) {
+      _desktopDriver!.dispose();
+      _desktopDriver = null;
+    }
+    _desktopDriver ??= DesktopBrowserDriver(
+      customBrowserPath: customPath,
+      httpClient: _http,
+    );
+    return _desktopDriver!;
+  }
+
   Future<void> openInteractiveLoginPage() async {
+    if (_settings.executionMode == ExecutionMode.desktopBrowser &&
+        isDesktopBrowserSupported) {
+      final driver = _ensureDesktopDriver();
+      _needsManualAuth = false;
+      await driver.openInteractiveLogin(onLog: _appendLog);
+      notifyListeners();
+      return;
+    }
     if (!isWebViewSupported) {
       final uri = Uri.parse('${_normalizedBridgeUrl()}/login');
       await _http.post(uri).timeout(const Duration(seconds: 6));
@@ -369,15 +436,30 @@ class AppStateController extends ChangeNotifier {
         if (!isWebViewSupported) {
           throw UnsupportedError(
             'On-device WebView automation requires Android or iOS. '
-            'Switch Execution Mode to "Python Bridge" to run on desktop.',
+            'Switch Execution Mode to "Built-In Desktop Browser" or "Python Bridge".',
           );
         }
         await _runWebViewWorkflow(post);
+      } else if (mode == ExecutionMode.desktopBrowser) {
+        if (!isDesktopBrowserSupported) {
+          throw UnsupportedError(
+            'Built-In Desktop Browser mode is available on Windows, Linux, and macOS.',
+          );
+        }
+        await _runDesktopBrowserWorkflow(post);
       } else {
         await _runBridgeWorkflow(post);
       }
     } catch (err) {
       _appendLog('[ERROR] $err');
+      if (mode == ExecutionMode.bridge &&
+          isDesktopBrowserSupported &&
+          err.toString().contains('SocketException')) {
+        _appendLog(
+          '[HINT] Python Bridge server is not running. To post with zero Python setup, '
+          'open Script Options and set Execution Engine to "Built-In Desktop Browser".',
+        );
+      }
       _statusMessage = 'Error: $err';
     } finally {
       final endedAt = DateTime.now().toUtc();
@@ -437,7 +519,7 @@ class AppStateController extends ChangeNotifier {
   }
 
   // ---------------------------------------------------------------------------
-  // On-Device WebView Automation Loop
+  // On-Device WebView & Built-In Desktop Browser Automation Loop
   // ---------------------------------------------------------------------------
 
   Future<void> _runWebViewWorkflow(PostTemplate post) async {
@@ -446,11 +528,42 @@ class AppStateController extends ChangeNotifier {
     // Allow HomeScreen to mount the WebViewWidget with non-zero layout bounds.
     await Future<void>.delayed(const Duration(milliseconds: 300));
 
+    final session = _WebViewBrowserSession(ctrl, _navigateAndWait);
+    await _runBrowserAutomationLoop(
+      session: session,
+      post: post,
+      engineLabel: 'on-device WebView',
+    );
+  }
+
+  Future<void> _runDesktopBrowserWorkflow(PostTemplate post) async {
+    final driver = _ensureDesktopDriver();
+    await driver.ensureConnected(onLog: _appendLog);
+    try {
+      await _runBrowserAutomationLoop(
+        session: driver,
+        post: post,
+        engineLabel: 'built-in Desktop Browser (CDP)',
+      );
+    } finally {
+      // Leave browser open if Facebook requires manual 2FA / login so the user
+      // can finish authenticating right inside the visible window.
+      if (!_needsManualAuth && _desktopDriverOverride == null) {
+        await driver.close();
+      }
+    }
+  }
+
+  Future<void> _runBrowserAutomationLoop({
+    required AutomationBrowserSession session,
+    required PostTemplate post,
+    required String engineLabel,
+  }) async {
     final imagesPayload = await _encodePostImages(post.imagePaths);
     final groups = _settings.groups;
 
     _appendLog(
-      '[INFO] Starting on-device WebView run across ${groups.length} group(s) '
+      '[INFO] Starting $engineLabel run across ${groups.length} group(s) '
       '(anonymous=${_settings.anonymous}, dry_run=${_settings.dryRun})',
     );
 
@@ -466,19 +579,19 @@ class AppStateController extends ChangeNotifier {
 
       var skipped = false;
       try {
-        await _navigateAndWait(ctrl, groupUrl);
+        await session.navigateAndWait(groupUrl);
         if (_stopRequested) break;
 
-        await _dismissBanners(ctrl);
+        await _dismissBanners(session);
 
         // Check login / checkpoint
-        var authState = await _checkAuthState(ctrl);
+        var authState = await _checkAuthState(session);
         if (authState['status'] == 'login' && _account.hasCredentials) {
           _appendLog('[INFO] Login required (${authState['reason']}); signing in with saved account...');
-          await _attemptCredentialLogin(ctrl, groupUrl);
+          await _attemptCredentialLogin(session, groupUrl);
           if (_stopRequested) break;
-          await _dismissBanners(ctrl);
-          authState = await _checkAuthState(ctrl);
+          await _dismissBanners(session);
+          authState = await _checkAuthState(session);
         }
 
         if (authState['status'] == 'login' || authState['status'] == 'checkpoint') {
@@ -494,7 +607,7 @@ class AppStateController extends ChangeNotifier {
 
         // Open composer and enforce anonymous mode rules
         final composerState = await _waitForComposerReady(
-          ctrl,
+          session,
           _settings.anonymous,
           preferAnonymous: _settings.preferAnonymous,
           requireAnonymousIfAvailable: _settings.requireAnonymousIfAvailable,
@@ -516,7 +629,7 @@ class AppStateController extends ChangeNotifier {
               _settings.anonymous || (_settings.preferAnonymous && usedAnonymous);
           // Fill text & images and submit (or close if dry-run)
           final submitOutcome = await _submitPostInComposer(
-            ctrl: ctrl,
+            session: session,
             message: post.message,
             imagesBase64: imagesPayload,
             dryRun: _settings.dryRun,
@@ -580,10 +693,10 @@ class AppStateController extends ChangeNotifier {
     await Future<void>.delayed(const Duration(seconds: 3));
   }
 
-  Future<void> _dismissBanners(WebViewController ctrl) async {
+  Future<void> _dismissBanners(AutomationBrowserSession session) async {
     try {
       final res = _decodeJsMap(
-        await ctrl.runJavaScriptReturningResult(
+        await session.evalJs(
           FbWebViewScripts.dismissBannersAndPrompts(),
         ),
       );
@@ -596,27 +709,29 @@ class AppStateController extends ChangeNotifier {
     }
   }
 
-  Future<Map<String, dynamic>> _checkAuthState(WebViewController ctrl) async {
-    final raw = await ctrl.runJavaScriptReturningResult(
+  Future<Map<String, dynamic>> _checkAuthState(
+    AutomationBrowserSession session,
+  ) async {
+    final raw = await session.evalJs(
       FbWebViewScripts.detectAuthOrCheckpoint(),
     );
     return _decodeJsMap(raw);
   }
 
   Future<void> _attemptCredentialLogin(
-    WebViewController ctrl,
+    AutomationBrowserSession session,
     String targetGroupUrl,
   ) async {
     var res = _decodeJsMap(
-      await ctrl.runJavaScriptReturningResult(
+      await session.evalJs(
         FbWebViewScripts.fillAndSubmitLogin(_account.email, _account.password),
       ),
     );
     if (res['ok'] != true) {
-      await _navigateAndWait(ctrl, 'https://www.facebook.com/login/');
-      await _dismissBanners(ctrl);
+      await session.navigateAndWait('https://www.facebook.com/login/');
+      await _dismissBanners(session);
       res = _decodeJsMap(
-        await ctrl.runJavaScriptReturningResult(
+        await session.evalJs(
           FbWebViewScripts.fillAndSubmitLogin(_account.email, _account.password),
         ),
       );
@@ -625,15 +740,15 @@ class AppStateController extends ChangeNotifier {
       throw Exception(res['error'] ?? 'Could not fill login form');
     }
     await Future<void>.delayed(const Duration(seconds: 5));
-    await _dismissBanners(ctrl);
-    final afterLogin = await _checkAuthState(ctrl);
+    await _dismissBanners(session);
+    final afterLogin = await _checkAuthState(session);
     if (afterLogin['status'] == 'ok') {
-      await _navigateAndWait(ctrl, targetGroupUrl);
+      await session.navigateAndWait(targetGroupUrl);
     }
   }
 
   Future<Map<String, dynamic>> _waitForComposerReady(
-    WebViewController ctrl,
+    AutomationBrowserSession session,
     bool anonymous, {
     bool preferAnonymous = false,
     bool requireAnonymousIfAvailable = false,
@@ -642,9 +757,9 @@ class AppStateController extends ChangeNotifier {
     Map<String, dynamic> lastRes = const {};
     while (DateTime.now().isBefore(deadline)) {
       if (_stopRequested) throw Exception('Stopped by user');
-      await _dismissBanners(ctrl);
+      await _dismissBanners(session);
       final res = _decodeJsMap(
-        await ctrl.runJavaScriptReturningResult(
+        await session.evalJs(
           FbWebViewScripts.openGroupComposer(
             anonymous,
             preferAnonymous: preferAnonymous,
@@ -678,7 +793,7 @@ class AppStateController extends ChangeNotifier {
   }
 
   Future<String> _submitPostInComposer({
-    required WebViewController ctrl,
+    required AutomationBrowserSession session,
     required String message,
     required List<Map<String, String>> imagesBase64,
     required bool dryRun,
@@ -689,7 +804,7 @@ class AppStateController extends ChangeNotifier {
     while (DateTime.now().isBefore(deadline)) {
       if (_stopRequested) throw Exception('Stopped by user');
       final res = _decodeJsMap(
-        await ctrl.runJavaScriptReturningResult(
+        await session.evalJs(
           FbWebViewScripts.fillAndSubmitPost(
             message: message,
             imagesBase64: imagesBase64,
@@ -710,7 +825,7 @@ class AppStateController extends ChangeNotifier {
         final closeDeadline = DateTime.now().add(const Duration(seconds: 15));
         while (DateTime.now().isBefore(closeDeadline)) {
           if (_stopRequested) return 'posted';
-          final closedRaw = await ctrl.runJavaScriptReturningResult(
+          final closedRaw = await session.evalJs(
             FbWebViewScripts.isComposerClosed(),
           );
           if (closedRaw.toString().contains('true')) {
@@ -924,6 +1039,7 @@ class AppStateController extends ChangeNotifier {
 
   @override
   void dispose() {
+    _desktopDriver?.dispose();
     _http.close();
     super.dispose();
   }

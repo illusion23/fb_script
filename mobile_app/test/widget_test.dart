@@ -1,8 +1,10 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:fb_group_poster/main.dart';
 import 'package:fb_group_poster/models/app_settings.dart';
 import 'package:fb_group_poster/models/fb_account.dart';
+import 'package:fb_group_poster/services/desktop_browser_driver.dart';
 import 'package:fb_group_poster/services/poster_runner.dart';
 import 'package:fb_group_poster/services/storage_service.dart';
 import 'package:fb_group_poster/utils/group_url_validator.dart';
@@ -134,6 +136,93 @@ void main() {
       expect(controller.isRunning, isFalse);
       expect(controller.history.length, 1);
       expect(controller.history.first.postTitle, 'Second');
+    });
+
+    test('runs standalone Desktop Browser (CDP) workflow without Python bridge', () async {
+      final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      final navigatedUrls = <String>[];
+
+      server.listen((req) async {
+        final ws = await WebSocketTransformer.upgrade(req);
+        ws.listen((raw) {
+          final msg = jsonDecode(raw as String) as Map<String, dynamic>;
+          final id = msg['id'] as int;
+          final method = msg['method'] as String;
+          final params = msg['params'] as Map<String, dynamic>? ?? const {};
+
+          if (method == 'Page.navigate') {
+            navigatedUrls.add(params['url'] as String? ?? '');
+            ws.add(jsonEncode({'id': id, 'result': <String, dynamic>{}}));
+            ws.add(jsonEncode({
+              'method': 'Page.loadEventFired',
+              'params': {'timestamp': 1},
+            }));
+            return;
+          }
+
+          if (method == 'Runtime.evaluate') {
+            final expr = params['expression'] as String? ?? '';
+            Object value = '1';
+            if (expr.contains('dismissLabels')) {
+              value = jsonEncode({'clicked': null});
+            } else if (expr.contains('two_step_verification')) {
+              value = jsonEncode({'status': 'ok', 'url': 'https://www.facebook.com/groups/999/'});
+            } else if (expr.contains('COMPOSER_TRIGGER_LABELS')) {
+              value = jsonEncode({'status': 'composer_ready', 'usedAnonymous': true});
+            } else if (expr.contains('SUBMIT_BUTTON_NAMES')) {
+              value = jsonEncode({'status': 'submitted'});
+            } else if (expr.contains('isCommentTextbox')) {
+              value = 'true';
+            }
+            ws.add(jsonEncode({
+              'id': id,
+              'result': {
+                'result': {'type': 'string', 'value': value},
+              },
+            }));
+            return;
+          }
+
+          ws.add(jsonEncode({'id': id, 'result': <String, dynamic>{}}));
+        });
+      });
+
+      final driver = DesktopBrowserDriver(defaultSettleDelay: Duration.zero);
+      try {
+        await driver.attachToWebSocket('ws://127.0.0.1:${server.port}/cdp');
+
+        final storage = await StorageService.create();
+        final controller = AppStateController(
+          storage,
+          desktopBrowserDriver: driver,
+        )..init();
+
+        expect(controller.settings.executionMode, ExecutionMode.desktopBrowser);
+
+        await controller.createPost(
+          title: 'Standalone Win Post',
+          message: 'Posted directly via Desktop Chrome CDP!',
+        );
+        await controller.updateSettings(
+          controller.settings.copyWith(
+            groups: const ['https://www.facebook.com/groups/999/'],
+            executionMode: ExecutionMode.desktopBrowser,
+          ),
+        );
+
+        await controller.startScript();
+
+        expect(navigatedUrls, ['https://www.facebook.com/groups/999/']);
+        expect(controller.isRunning, isFalse);
+        expect(controller.history.length, 1);
+        expect(controller.history.first.mode, 'desktopBrowser');
+        expect(controller.history.first.results.length, 1);
+        expect(controller.history.first.results.first.status, 'posted');
+        expect(controller.history.first.results.first.anonymous, isTrue);
+      } finally {
+        await driver.close(terminateBrowser: false);
+        await server.close(force: true);
+      }
     });
   });
 

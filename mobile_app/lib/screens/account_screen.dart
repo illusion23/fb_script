@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 
+import '../models/app_settings.dart';
 import '../models/fb_account.dart';
 import '../services/poster_runner.dart';
 import '../utils/compat_theme.dart';
@@ -78,8 +79,18 @@ class _AccountScreenState extends State<AccountScreen> {
     try {
       await widget.controller.openInteractiveLoginPage();
       if (!mounted) return;
-      if (widget.controller.isWebViewSupported) {
+      if (widget.controller.isWebViewSupported &&
+          widget.controller.settings.executionMode == ExecutionMode.webView) {
         await LiveWebViewSheet.show(context, widget.controller);
+      } else if (widget.controller.settings.executionMode ==
+          ExecutionMode.desktopBrowser) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Opened Facebook in Desktop Browser. Sign in (and finish 2FA), then press Start.',
+            ),
+          ),
+        );
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(

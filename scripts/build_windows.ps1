@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
   Build FB Group Poster for Windows x64 with guaranteed Windows 7 SP1 x64,
   Windows 10, and Windows 11 compatibility.
@@ -115,11 +115,12 @@ Supported OS:
   - Windows 10 (64-bit)
   - Windows 11 (64-bit)
 
-Quick Start:
+Quick Start (Standalone — No Python Required):
   1. Extract the entire ZIP folder (keep all DLLs and the ``data`` folder next to fb_group_poster.exe).
   2. Run ``fb_group_poster.exe``.
-  3. Open the side menu -> FB Account -> set your Python Bridge Server URL
-     (run ``python bridge_server.py --host 0.0.0.0 --port 8765`` on a Windows 10/11 or Linux host).
+  3. Open Side Menu -> FB Account -> click "Open Interactive Facebook Login" (or save credentials),
+     create/select your Default Post, and press Start.
+  4. Uses your installed Chrome / Edge / Supermium / Brave automatically (no Python needed).
 "@
 Set-Content -Path (Join-Path $ReleaseDir "README-WINDOWS.txt") -Value $readmeWin -Encoding UTF8
 

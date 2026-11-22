@@ -1,5 +1,6 @@
 enum ExecutionMode {
   webView,
+  desktopBrowser,
   bridge,
 }
 
@@ -41,6 +42,7 @@ class AppSettings {
     this.delayMin = 5.0,
     this.delayMax = 12.0,
     this.bridgeUrl = 'http://127.0.0.1:8765',
+    this.browserExecutablePath = '',
     this.executionMode = ExecutionMode.webView,
   });
 
@@ -51,6 +53,7 @@ class AppSettings {
   final double delayMin;
   final double delayMax;
   final String bridgeUrl;
+  final String browserExecutablePath;
   final ExecutionMode executionMode;
 
   bool get anonymous => anonymousPolicy == AnonymousPolicy.strictAnonymous;
@@ -65,6 +68,7 @@ class AppSettings {
     double? delayMin,
     double? delayMax,
     String? bridgeUrl,
+    String? browserExecutablePath,
     ExecutionMode? executionMode,
   }) {
     final resolvedPolicy = anonymousPolicy ??
@@ -82,6 +86,8 @@ class AppSettings {
       delayMin: delayMin ?? this.delayMin,
       delayMax: delayMax ?? this.delayMax,
       bridgeUrl: bridgeUrl ?? this.bridgeUrl,
+      browserExecutablePath:
+          browserExecutablePath ?? this.browserExecutablePath,
       executionMode: executionMode ?? this.executionMode,
     );
   }
@@ -95,6 +101,7 @@ class AppSettings {
         'delayMin': delayMin,
         'delayMax': delayMax,
         'bridgeUrl': bridgeUrl,
+        'browserExecutablePath': browserExecutablePath,
         'executionMode': executionMode.name,
       };
 
@@ -131,6 +138,7 @@ class AppSettings {
       delayMin: (json['delayMin'] as num?)?.toDouble() ?? 5.0,
       delayMax: (json['delayMax'] as num?)?.toDouble() ?? 12.0,
       bridgeUrl: json['bridgeUrl'] as String? ?? 'http://127.0.0.1:8765',
+      browserExecutablePath: json['browserExecutablePath'] as String? ?? '',
       executionMode: mode,
     );
   }

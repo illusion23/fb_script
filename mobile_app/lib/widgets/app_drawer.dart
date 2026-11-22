@@ -242,9 +242,11 @@ class AppDrawer extends StatelessWidget {
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      controller.settings.executionMode == ExecutionMode.webView
-                          ? 'Mobile Browser'
-                          : 'Python Bridge',
+                      switch (controller.settings.executionMode) {
+                        ExecutionMode.webView => 'Mobile Browser',
+                        ExecutionMode.desktopBrowser => 'Desktop Browser',
+                        ExecutionMode.bridge => 'Python Bridge',
+                      },
                       style: theme.textTheme.bodySmall?.copyWith(
                         fontWeight: FontWeight.w600,
                       ),

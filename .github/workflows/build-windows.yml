@@ -101,17 +101,20 @@ jobs:
             - Windows 10 (64-bit)
             - Windows 11 (64-bit)
 
-          Quick Start:
+          Quick Start (Standalone — No Python Required):
             1. Extract the entire ZIP folder (keep all DLLs and the `data` folder next to fb_group_poster.exe).
             2. Run `fb_group_poster.exe`.
-            3. Open the side menu -> FB Account -> set your Python Bridge Server URL
-               (run `python bridge_server.py --host 0.0.0.0 --port 8765` on your Windows 10/11 or Linux host).
+            3. Open Side Menu -> FB Account -> click "Open Interactive Facebook Login" (or enter credentials),
+               then create/select your Default Post and press Start.
+            4. The app automatically launches your installed Chrome / Edge / Supermium / Brave browser
+               with an isolated saved profile (`%APPDATA%\FBGroupPoster\chrome_profile`) so your
+               Facebook login & 2FA stay saved between runs.
 
           Note for Windows 7 SP1 x64:
             - VC++ Runtime and Universal C Runtime (UCRT) DLLs are bundled in this folder.
             - Ensure Windows 7 SP1 is 64-bit and has the Windows 7 Platform Update (KB2670838 / Direct3D 11.1).
-            - On Windows 7, run `bridge_server.py` on a Windows 10/11 or Linux PC on your network and point
-              the Bridge Server URL to it (modern Chromium/Playwright requires Windows 10+ or Linux).
+            - Requires Google Chrome (109+), Microsoft Edge, Supermium (recommended on Win 7), or Brave.
+            - If using a portable browser, set its `.exe` path under Side Menu -> Script Options.
           "@ | Set-Content -Path (Join-Path $releaseDir "README-WINDOWS.txt") -Encoding UTF8
 
           Get-ChildItem -Path $releaseDir
